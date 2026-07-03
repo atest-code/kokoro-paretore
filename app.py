@@ -13,10 +13,9 @@ st.set_page_config(
 
 # 🚨 新キー（AQ.形式）のNotFoundエラーを強制回避するベータ版ルーティング設定
 if "GEMINI_API_KEY" in st.secrets:
-    genai.configure(
-        api_key=st.secrets["GEMINI_API_KEY"],
-        client_options={"api_version": "v1beta"}  # 👈 これで新キーのエンドポイントを強制補正
-    )
+    # 👈 環境変数に直接ベータ版を指定することで、ライブラリのバグを安全に回避します
+    os.environ["CONF_API_VERSION"] = "v1beta"
+    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 else:
     st.error("APIキーがSecretsに設定されていません。")
 
