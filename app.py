@@ -13,8 +13,7 @@ st.set_page_config(
 )
 
 # 🚨 StreamlitのSecretsから安全にAPIキーを読み込む（エラー対策版）
-api_key_val = st.secrets.get("GEMINI_API_KEY", "")
-client = genai.Client(api_key=api_key_val)
+client = genai.Client()
 
 # セッション状態の初期化
 if "stage" not in st.session_state:
