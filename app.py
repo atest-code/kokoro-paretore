@@ -1,7 +1,8 @@
 import os
 import random
 import streamlit as st
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 
 # 1. スマホ風の画面サイズに設定
 st.set_page_config(
@@ -11,13 +12,13 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# 🚨 新キー（AQ.形式）のNotFoundエラーを強制回避するベータ版ルーティング設定
-if "GEMINI_API_KEY" in st.secrets:
-    # 👈 環境変数に直接ベータ版を指定することで、ライブラリのバグを安全に回避します
-    os.environ["CONF_API_VERSION"] = "v1beta"
-    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+# 🚨 最新SDKでの確実なAPIキー注入
+if "GEMINI_API_KEY" in st.secrets and st.secrets["GEMINI_API_KEY"]:
+    # Secretsから取得したAQ.から始まるキーを、新SDKのClientに直接渡します
+    client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
 else:
     st.error("APIキーがSecretsに設定されていません。")
+    st.stop()
 
 # セッション状態の初期化
 if "stage" not in st.session_state:
@@ -111,13 +112,11 @@ elif st.session_state.stage == "generate_event":
             "●ペアトレ対応：\n（親のセリフや行動の記述）"
         )
         
-        # models/ 指定のまま維持
-        model = genai.GenerativeModel(
-            model_name='models/gemini-1.5-flash',
-            system_instruction=system_instruction
-        )
-        response = model.generate_content(
-            f"【{st.session_state.plant_name}】が【{chosen_situation}】で起こすリアルなトラブルと、罠を含んだ3つの対応方法を作ってください。"
+        # 🚨 最新SDK（google-genai）に最適化した生成メソッド
+        response = client.models.generate_content(
+            model='gemini-1.5-flash',
+            contents=f"【{st.session_state.plant_name}】が【{chosen_situation}】で起こすリアルなトラブルと、罠を含んだ3つの対応方法を作ってください。",
+            config=types.GenerateContentConfig(system_instruction=system_instruction)
         )
         
         raw_text = response.text
@@ -198,7 +197,7 @@ elif st.session_state.stage == "result":
         system_instruction = (
             "あなたは植物に例えたペアトレコーチです。プレイヤーが選んだ対応のタイプ（GOOD:ペアトレ流、BAD:お説教・正論、OVER:過保護・物のご褒美・過剰共感）"
             "に応じて、植物（子ども）の特性ゆえにどう感じて、どう変化したかを優しく解説してください。\n\n"
-            "特にBADやOVERは『育児書に書いてあったり、世間一般では素晴らしいとされる対応』であるため、決してお説教をせず、"
+            "特にBADやOVERは『育児書に書いてあったり、世間一般では素晴らしいとされる対応』であるため、決してお説教をせず, "
             "『一見、ものすごく丁寧で理想的な対応に見えますよね。そうしたくなる気持ち、本当に痛いほど分かります！でも、実はこの特性の植物には……』"
             "と、親御さんの愛情に深く共感した上で、なぜ裏目に出てしまうのかをユーモラスかつ『目から鱗』の納得感で、スマホでスッと読める長さにまとめて解説してください。"
         )
@@ -209,11 +208,12 @@ elif st.session_state.stage == "result":
             f"実際の対応文面: {st.session_state.selected_text}"
         )
         
-        model = genai.GenerativeModel(
-            model_name='models/gemini-1.5-flash',
-            system_instruction=system_instruction
+        # 🚨 最新SDK（google-genai）用の解説生成
+        response = client.models.generate_content(
+            model='gemini-1.5-flash',
+            contents=prompt,
+            config=types.GenerateContentConfig(system_instruction=system_instruction)
         )
-        response = model.generate_content(prompt)
         st.markdown("### 🌼 コーチからの育成アドバイス")
         st.info(response.text)
     
