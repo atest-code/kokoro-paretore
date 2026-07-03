@@ -1,8 +1,7 @@
 import os
 import random
 import streamlit as st
-from google import genai
-from google.genai import types
+import google.generativeai as genai  # 👈 安定版のインポート
 
 # 1. スマホ風の画面サイズに設定
 st.set_page_config(
@@ -12,10 +11,11 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# 🚨 StreamlitのSecretsから安全にAPIキーを読み込む（エラー対策版）
-# 👈 Secretsの文字列を直接引っ張ってきて、明示的にapi_key引数に叩き込みます
-gemini_key = st.secrets["GEMINI_API_KEY"]
-client = genai.Client(api_key=gemini_key)
+# 🚨 安定版でのAPIキー初期化（Secretsから自動セット）
+if "GEMINI_API_KEY" in st.secrets:
+    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+else:
+    st.error("APIキーがSecretsに設定されていません。")
 
 # セッション状態の初期化
 if "stage" not in st.session_state:
@@ -64,7 +64,6 @@ if st.session_state.stage == "select_plant":
 elif st.session_state.stage == "generate_event":
     with st.spinner("日常のピンチを読み込み中..."):
         
-        # 毎回違うリアルな日常のシチュエーションをランダム抽出
         situations = [
             "朝の登校・登園準備（時間がないのに動かない、着替えない、別のことを始めるなど）",
             "夕方の帰宅後から夕食まで（宿題を始めない、手洗いを嫌がる、ずっと動画やゲームを辞めないなど）",
@@ -75,7 +74,6 @@ elif st.session_state.stage == "generate_event":
         ]
         chosen_situation = random.choice(situations)
         
-        # 各植物タイプの詳細な特性定義プロンプト
         plant_profiles = (
             "【🌵 サボテン（ASD傾向 / こだわり派）の特性】\n"
             "- 特徴: 自分の世界やルールを強く持ち、急な予定変更や『～しなさい』という命令（過干渉）が大の苦手。触るとトゲで反発する。\n"
@@ -91,7 +89,6 @@ elif st.session_state.stage == "generate_event":
             "- ペアトレ流（GOOD）: まず親が落ち着く（感情のアンカー）、静かで安全な場所の確保（クールダウン）、不安を煽らず『大丈夫、ここにいるよ』と短い言葉で見守り、淡々と次の行動へ促す。"
         )
         
-        # 【超高難易度化】世間のしつけ常識を逆手に取るプロンプト
         system_instruction = (
             "あなたは発達障害・凸凹児のペアレントトレーニングを植物育成ゲームに例えて教える超一流のコーチです。\n\n"
             f"以下の特性プロファイルを深く理解してください：\n{plant_profiles}\n\n"
@@ -100,32 +97,31 @@ elif st.session_state.stage == "generate_event":
             "【重要：選択肢の難易度設定】\n"
             "育児書や世間一般では『丁寧で正しいしつけ』『優しい神対応』と思われがちですが、実はその特性の子ども（ADHD/ASD/HSC）には逆効果やパニック悪化になってしまう『もったいない罠対応』を必ず混ぜてください。親御さんがリアルに『え、これがダメなの！？』と本気で迷う選択肢にしてください。\n\n"
             "●怒鳴る・お説教対応（BAD）：\n"
-            "単なる怒鳴り声ではなく、『世間一般の正論や、良かれと思って優しく長々と言い聞かせるお説教・しつけ』にしてください。（例：なぜダメなのか理由をコンコンと論理的に説明する（実はワーキングメモリの低い子にはただの長い雑音になり、行動を忘れさせる原因になる）、『もう小学生なんだから自分で考えなさい』と突き放すなど）\n"
+            "単なる怒鳴り声ではなく、『世間一般の正論や、良かれと思って優しく長々と言い聞かせるお説教・しつけ』にしてください。\n"
             "●過保護・ご褒美対応（OVER）：\n"
-            "『親が先回りして失敗を防ぐ、ご褒美や物で釣る、または良かれと思って過剰に共感・同調して寄り添いすぎる対応』にしてください。（例：『これができたらお菓子あげる！』と物で釣る（実は条件がエスカレートする罠）、『嫌だったね、悲しいね』と一緒になって過剰に共感して寄り添う（本人の感情の渦を増幅させパニックを長引かせる）など）\n"
+            "『親が先回りして失敗を防ぐ、ご褒美や物で釣る、または良かれと思って過剰に共感・同調して寄り添いすぎる対応』にしてください。\n"
             "●ペアトレ対応（GOOD）：\n"
             "上記のプロファイルに基づいた『その特性にベストな環境調整、ワンステップでの具体的・肯定的な指示、あえて静かに見守る対応』にしてください。\n\n"
-            "フォーマットは必ず以下を厳守し、選択肢のテキスト自体にGOODやBADといった正解を匂わせる言葉は絶対に入れないでください：\n"
+            "フォーマットは必ず以下を厳婚し、選択肢のテキスト自体にGOODやBADといった正解を匂わせる言葉は絶対に入れないでください：\n"
             "【トラブル】\n（具体的な状況説明）\n"
             "●怒鳴る対応：\n（親のセリフや行動の記述）\n"
             "●過保護対応：\n（親のセリフや行動の記述）\n"
             "●ペアトレ対応：\n（親のセリフや行動の記述）"
         )
         
-        # 🚨 最も動作が安定している gemini-1.5-flash を採用
-        response = client.models.generate_content(
-            model='gemini-1.5-flash',
-            contents=f"【{st.session_state.plant_name}】が【{chosen_situation}】で起こすリアルなトラブルと、罠を含んだ3つの対応方法を作ってください。",
-            config=types.GenerateContentConfig(system_instruction=system_instruction)
+        # 安定版の生成ロジック
+        model = genai.GenerativeModel(
+            model_name='gemini-1.5-flash',
+            system_instruction=system_instruction
+        )
+        response = model.generate_content(
+            f"【{st.session_state.plant_name}】が【{chosen_situation}】で起こすリアルなトラブルと、罠を含んだ3つの対応方法を作ってください。"
         )
         
         raw_text = response.text
-        
-        # テキストの解析と分割
         parts = raw_text.split("●")
         st.session_state.event_title = parts[0].replace("【トラブル】", "").strip()
         
-        # 3つの選択肢を内部管理用タグ付きでリスト化
         choices = []
         for part in parts[1:]:
             if "怒鳴る対応：" in part:
@@ -135,16 +131,14 @@ elif st.session_state.stage == "generate_event":
             elif "ペアトレ対応：" in part:
                 choices.append({"type": "GOOD", "text": part.replace("ペアトレ対応：", "").strip()})
         
-        # 選択肢を完全シャッフルしてボタンを押すまで正解を隠す
         random.shuffle(choices)
         st.session_state.shuffled_choices = choices
         
         st.session_state.stage = "play"
         st.rerun()
 
-# --- 画面3: メインゲーム画面（ランダム配置された選択肢） ---
+# --- 画面3: メインゲーム画面 ---
 elif st.session_state.stage == "play":
-    # 視覚的なステータス画面
     st.markdown(f"""
     <div class='plant-box'>
         <span style='font-size: 80px;'>{st.session_state.plant_emoji}</span>
@@ -153,25 +147,20 @@ elif st.session_state.stage == "play":
     </div>
     """, unsafe_allow_html=True)
     
-    # 元気度のゲージ
     st.caption(f"水分・元気度: {st.session_state.health} / 100")
     st.progress(st.session_state.health / 100)
-    
     st.write("---")
     
-    # トラブル内容の表示
     st.markdown("### 🚨 日常のピンチ！")
     st.info(st.session_state.event_title)
     st.write("---")
     st.markdown("🗣️ **あなたならどう声をかける？**")
     
-    # シャッフルされた選択肢ボタンを縦並びで表示
     for i, choice in enumerate(st.session_state.shuffled_choices):
         if st.button(choice["text"], key=f"choice_{i}"):
             st.session_state.selected_type = choice["type"]
             st.session_state.selected_text = choice["text"]
             
-            # ステータスの計算と成長段階の変化
             if choice["type"] == "GOOD":
                 st.session_state.health = min(100, st.session_state.health + 20)
                 if st.session_state.health >= 85:
@@ -188,12 +177,11 @@ elif st.session_state.stage == "play":
             st.session_state.stage = "result"
             st.rerun()
 
-# --- 画面4: 結果・フィードバック（ネタバラシと目から鱗の解説） ---
+# --- 画面4: 結果・フィードバック ---
 elif st.session_state.stage == "result":
     st.markdown(f"<div style='text-align:center; font-size:50px;'>{st.session_state.plant_emoji}</div>", unsafe_allow_html=True)
     st.progress(st.session_state.health / 100)
     
-    # 結果の判定をビジュアル表示
     if st.session_state.selected_type == "GOOD":
         st.success("✨ 【ペアトレ流】見事な水やり！特性を捉えた最高の対応です。")
     elif st.session_state.selected_type == "BAD":
@@ -205,7 +193,6 @@ elif st.session_state.stage == "result":
     st.write("---")
     
     with st.spinner("花木の様子を観察中..."):
-        # 罠選択肢に対して深い納得感を与えるための解説プロンプト
         system_instruction = (
             "あなたは植物に例えたペアトレコーチです。プレイヤーが選んだ対応のタイプ（GOOD:ペアトレ流、BAD:お説教・正論、OVER:過保護・物のご褒美・過剰共感）"
             "に応じて、植物（子ども）の特性ゆえにどう感じて、どう変化したかを優しく解説してください。\n\n"
@@ -220,26 +207,24 @@ elif st.session_state.stage == "result":
             f"実際の対応文面: {st.session_state.selected_text}"
         )
         
-        # 🚨 解説側も 1.5-flash に統一して安定化
-        response = client.models.generate_content(
-            model='gemini-1.5-flash',
-            contents=prompt,
-            config=types.GenerateContentConfig(system_instruction=system_instruction)
+        model = genai.GenerativeModel(
+            model_name='gemini-1.5-flash',
+            system_instruction=system_instruction
         )
+        response = model.generate_content(prompt)
         st.markdown("### 🌼 コーチからの育成アドバイス")
         st.info(response.text)
     
     st.write("---")
     
-    # テンポよく遊ぶための2つのルートボタン
     col1, col2 = st.columns(2)
     with col1:
         if st.button("➡️ 同じ子で次のピンチへ挑む"):
-            st.session_state.stage = "generate_event" # 植物と元気度を引き継いで次のピンチへ！
+            st.session_state.stage = "generate_event"
             st.rerun()
     with col2:
         if st.button("🔄 別の植物を新しく育てる"):
-            st.session_state.stage = "select_plant" # 最初のキャラクター選択へ
+            st.session_state.stage = "select_plant"
             st.session_state.health = 50
             st.session_state.growth = "タネ・苗木"
             st.rerun()
