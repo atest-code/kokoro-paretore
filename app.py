@@ -11,9 +11,12 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# 🚨 安定版でのAPIキー初期化（Secretsから自動セット）
+# 🚨 新キー（AQ.形式）のNotFoundエラーを強制回避するベータ版ルーティング設定
 if "GEMINI_API_KEY" in st.secrets:
-    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+    genai.configure(
+        api_key=st.secrets["GEMINI_API_KEY"],
+        client_options={"api_version": "v1beta"}  # 👈 これで新キーのエンドポイントを強制補正
+    )
 else:
     st.error("APIキーがSecretsに設定されていません。")
 
@@ -109,7 +112,7 @@ elif st.session_state.stage == "generate_event":
             "●ペアトレ対応：\n（親のセリフや行動の記述）"
         )
         
-        # 🚨 'models/' を追加してNotFoundを完全回避
+        # models/ 指定のまま維持
         model = genai.GenerativeModel(
             model_name='models/gemini-1.5-flash',
             system_instruction=system_instruction
@@ -207,7 +210,6 @@ elif st.session_state.stage == "result":
             f"実際の対応文面: {st.session_state.selected_text}"
         )
         
-        # 🚨 こちらも 'models/' を追加
         model = genai.GenerativeModel(
             model_name='models/gemini-1.5-flash',
             system_instruction=system_instruction
