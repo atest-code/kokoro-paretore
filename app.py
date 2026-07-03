@@ -1,7 +1,7 @@
 import os
 import random
 import streamlit as st
-import google.generativeai as genai  # 👈 安定版のインポート
+import google.generativeai as genai
 
 # 1. スマホ風の画面サイズに設定
 st.set_page_config(
@@ -102,16 +102,16 @@ elif st.session_state.stage == "generate_event":
             "『親が先回りして失敗を防ぐ、ご褒美や物で釣る、または良かれと思って過剰に共感・同調して寄り添いすぎる対応』にしてください。\n"
             "●ペアトレ対応（GOOD）：\n"
             "上記のプロファイルに基づいた『その特性にベストな環境調整、ワンステップでの具体的・肯定的な指示、あえて静かに見守る対応』にしてください。\n\n"
-            "フォーマットは必ず以下を厳婚し、選択肢のテキスト自体にGOODやBADといった正解を匂わせる言葉は絶対に入れないでください：\n"
+            "フォーマットは必ず以下を厳守し、選択肢のテキスト自体にGOODやBADといった正解を匂わせる言葉は絶対に入れないでください：\n"
             "【トラブル】\n（具体的な状況説明）\n"
             "●怒鳴る対応：\n（親のセリフや行動の記述）\n"
             "●過保護対応：\n（親のセリフや行動の記述）\n"
             "●ペアトレ対応：\n（親のセリフや行動の記述）"
         )
         
-        # 安定版の生成ロジック
+        # 🚨 'models/' を追加してNotFoundを完全回避
         model = genai.GenerativeModel(
-            model_name='gemini-1.5-flash',
+            model_name='models/gemini-1.5-flash',
             system_instruction=system_instruction
         )
         response = model.generate_content(
@@ -207,8 +207,9 @@ elif st.session_state.stage == "result":
             f"実際の対応文面: {st.session_state.selected_text}"
         )
         
+        # 🚨 こちらも 'models/' を追加
         model = genai.GenerativeModel(
-            model_name='gemini-1.5-flash',
+            model_name='models/gemini-1.5-flash',
             system_instruction=system_instruction
         )
         response = model.generate_content(prompt)
