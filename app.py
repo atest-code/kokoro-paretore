@@ -1,8 +1,6 @@
-import os
-import random
 import streamlit as st
-from google import genai
-from google.genai import types
+import requests
+import random
 
 # 1. スマホ風の画面サイズに設定
 st.set_page_config(
@@ -12,219 +10,89 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# 最新SDKでの確実なAPIキー注入
-if "GEMINI_API_KEY" in st.secrets and st.secrets["GEMINI_API_KEY"]:
-    client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
-else:
+# APIキーの取得
+api_key = st.secrets.get("GEMINI_API_KEY")
+if not api_key:
     st.error("APIキーがSecretsに設定されていません。")
     st.stop()
+
+# 直接通信用の関数
+def call_gemini(prompt, system_instruction):
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+    payload = {
+        "system_instruction": {"parts": [{"text": system_instruction}]},
+        "contents": [{"parts": [{"text": prompt}]}]
+    }
+    response = requests.post(url, json=payload)
+    if response.status_code != 200:
+        st.error(f"APIエラー: {response.text}")
+        return ""
+    return response.json()["candidates"][0]["content"]["parts"][0]["text"]
 
 # セッション状態の初期化
 if "stage" not in st.session_state:
     st.session_state.stage = "select_plant"
     st.session_state.plant_name = ""
     st.session_state.plant_emoji = "🌱"
-    st.session_state.health = 50  # 植物の元気度
+    st.session_state.health = 50
     st.session_state.growth = "タネ・苗木"
-    st.session_state.event_title = ""
-    st.session_state.shuffled_choices = [] # シャッフルされた選択肢のリスト
 
-# スマホ風のデザイン調整（CSS）
+# CSSデザイン
 st.markdown("""
     <style>
     .block-container { max-width: 450px; padding-top: 2rem; }
-    .stButton button { width: 100%; border-radius: 12px; padding: 14px; font-size: 15px; white-space: normal; text-align: left; line-height: 1.4; }
+    .stButton button { width: 100%; border-radius: 12px; padding: 14px; font-size: 15px; }
     .plant-box { text-align: center; background-color: #f0f7f4; padding: 20px; border-radius: 20px; margin-bottom: 15px; border: 1px solid #e0ebd3; }
-    .custom-sub { color: #555; font-size: 14px; text-align: center; margin-bottom: 20px; }
     </style>
 """, unsafe_allow_html=True)
 
-# --- 画面1: キャラクター（花木）選択 ---
+# --- 画面1: 植物選択 ---
 if st.session_state.stage == "select_plant":
-    st.markdown("<h2 style='text-align: center; color: #2e6f40;'>🌱 ココロの花木</h2>", unsafe_allow_html=True)
-    st.markdown("<p class='custom-sub'>あなたのお子さんはどのタイプ？<br>特性を植物に例えてペアトレを学びます</p>", unsafe_allow_html=True)
-    
-    if st.button("🌵 サボテン (マイペース・触るとトゲがある)\n【こだわり派・過干渉を嫌う・自分の世界を持つ子】"):
-        st.session_state.plant_name = "サボテン（こだわり派・過干渉が苦手）"
-        st.session_state.plant_emoji = "🌵"
-        st.session_state.stage = "generate_event"
-        st.rerun()
-        
-    if st.button("🌻 ひまわり (元気いっぱい・注意が散る)\n【衝動的・エネルギー全開・集中が続きにくい子】"):
-        st.session_state.plant_name = "ひまわり（衝動的・エネルギー全開）"
-        st.session_state.plant_emoji = "🌻"
-        st.session_state.stage = "generate_event"
-        st.rerun()
-        
-    if st.button("🥀 ミモザ (刺激に敏感・すぐ閉じちゃう)\n【HSC傾向・環境に敏感で傷つきやすいデリケートな子】"):
-        st.session_state.plant_name = "ミモザ（HSC・とてもデリケート）"
-        st.session_state.plant_emoji = "🥀"
-        st.session_state.stage = "generate_event"
-        st.rerun()
+    st.markdown("## 🌱 ココロの花木")
+    if st.button("🌵 サボテン（こだわり派）"):
+        st.session_state.plant_name = "サボテン"; st.session_state.plant_emoji = "🌵"; st.session_state.stage = "generate_event"; st.rerun()
+    if st.button("🌻 ひまわり（衝動派）"):
+        st.session_state.plant_name = "ひまわり"; st.session_state.plant_emoji = "🌻"; st.session_state.stage = "generate_event"; st.rerun()
+    if st.button("🥀 ミモザ（HSC派）"):
+        st.session_state.plant_name = "ミモザ"; st.session_state.plant_emoji = "🥀"; st.session_state.stage = "generate_event"; st.rerun()
 
-# --- 画面2: AIによるピンチイベント＆高難易度選択肢の生成 ---
+# --- 画面2: イベント生成 ---
 elif st.session_state.stage == "generate_event":
-    with st.spinner("日常のピンチを読み込み中..."):
+    with st.spinner("AIがピンチを生成中..."):
+        sys_inst = "あなたはペアトレコーチです。特性に合わせたトラブルと対応3種（怒鳴る、過保護、ペアトレ）を生成。フォーマット：【トラブル】〜 ●怒鳴る対応：〜 ●過保護対応：〜 ●ペアトレ対応：〜"
+        raw = call_gemini(f"{st.session_state.plant_name}が起こしそうなトラブルを考えて", sys_inst)
         
-        situations = [
-            "朝の登校・登園準備（時間がないのに動かない、着替えない、別のことを始めるなど）",
-            "夕方の帰宅後から夕食まで（宿題を始めない、手洗いを嫌がる、ずっと動画やゲームを辞めないなど）",
-            "夜のお風呂や寝る前の時間（お風呂に入りたがらない、布団に入ってもいつまでもテンションが高いなど）",
-            "休日のお出かけ先やお店の中（急な予定変更で不機嫌、お店のものを触りまくる、些細なことでパニックなど）",
-            "片付けやルール変更（おもちゃを散らかしっぱなし、片付けを指示しても無視する、ゲームの制限時間が来て暴れるなど）",
-            "食事中のトラブル（途中で立ち歩く、好き嫌いが激しくて食べない、クチャクチャ食べるなど）"
-        ]
-        chosen_situation = random.choice(situations)
-        
-        plant_profiles = (
-            "【サボテン（ASD傾向 / こだわり派）の特性】\n"
-            "- 特徴: 自分の世界やルールを強く持ち、急な予定変更や『～しなさい』という命令（過干渉）が大の苦手。触るとトゲで反発する。\n"
-            "- 罠対応（BAD/OVER）: 『なんで言う通りにできないの！』とお説教する（BAD）、または機嫌を損ねないよう親が先回りしてお膳立てする（OVER）。\n"
-            "- ペアトレ流（GOOD）: 見通しを伝える（予告）、視覚化、選択肢を提示して『自分で選んだ』と思わせる。命令ではなく『〇〇したら教えてね』と境界線を作る。\n\n"
-            "【ひまわり（ADHD傾向 / 衝動・多動派）の特性】\n"
-            "- 特徴: 元気いっぱいで悪気はないが、ワーキングメモリが小さく、刺激にすぐ気を取られて集中が続かない。指示をすぐに忘れる。\n"
-            "- 罠対応（BAD/OVER）: 『前にも言ったでしょ！』と長々とお説教する（長い話は脳から消えるためBAD）、または動かないからと親が全部代わりにやってあげる（OVER）。\n"
-            "- ペアトレ流（GOOD）: 刺激を減らす環境調整、1回に1つの短い指示（ワンステップ）、行動のハードルを極限まで下げる、できた瞬間に即ほめる（CCQ: 穏やかに、近づいて、静かに）。\n\n"
-            "【ミモザ（HSC / 刺激に敏感派）の特性】\n"
-            "- 特徴: 感受性が非常に豊かで、他人の表情や場の空気、音や光などの刺激を過剰にキャッチして疲れやすい。傷つきやすく、不安から貝のように心を閉じる。\n"
-            "- 罠対応（BAD/OVER）: 『これくらいで泣かないの！』としつける（BAD）、または可哀想だからと親が一緒になって過剰にオロオロと共感しすぎる（親の不安が伝染してパニックが長引くOVER）。\n"
-            "- ペアトレ流（GOOD）: まず親が落ち着く（感情のアンカー）、静かで安全な場所の確保（クールダウン）、不安を煽らず『大丈夫、ここにいるよ』と短い言葉で見守り、淡々と次の行動へ促す。"
-        )
-        
-        system_instruction = (
-            "あなたは発達障害・凸凹児のペアレントトレーニングを植物育成ゲームに例えて教えるコーチです。\n\n"
-            f"以下の特性プロファイルを理解してください：\n{plant_profiles}\n\n"
-            f"選択されているタイプ【{st.session_state.plant_name}】の子どもが、"
-            f"シチュエーション【{chosen_situation}】で起こしそうな困りごとを1つ提示し、親の対応選択肢を3つ作ってください。\n\n"
-            "【選択肢の難易度設定】\n"
-            "育児書や世間一般では『丁寧な対応』と思われがちですが、実はその特性の子どもには逆効果になってしまう『もったいない罠対応』を混ぜてください。\n\n"
-            "●怒鳴る・お説教対応（BAD）：\n"
-            "世間一般の正論や、良かれと思って優しく長々と言い聞かせるお説教にしてください。\n"
-            "●過保護・ご褒美対応（OVER）：\n"
-            "親が先回りして失敗を防ぐ、ご褒美で釣る、または過剰に共感しすぎる対応にしてください。\n"
-            "●ペアトレ対応（GOOD）：\n"
-            "プロファイルに基づいた環境調整、ワンステップでの肯定的指示、あえて静かに見守る対応にしてください。\n\n"
-            "フォーマットは必ず以下を厳守し、GOODやBADといった正解を匂わせる言葉は絶対に入れないでください：\n"
-            "【トラブル】\n（状況説明）\n"
-            "●怒鳴る対応：\n（セリフや行動）\n"
-            "●過保護対応：\n（セリフや行動）\n"
-            "●ペアトレ対応：\n（セリフや行動）"
-        )
-        
-        # 🚨 新SDKで最も安全なモデル名表記 'models/gemini-1.5-flash' に変更
-        response = client.models.generate_content(
-            model='models/gemini-1.5-flash',
-            contents=f"【{st.session_state.plant_name}】が【{chosen_situation}】で起こすリアルなトラブルと、罠を含んだ3つの対応方法を作ってください。",
-            config=types.GenerateContentConfig(system_instruction=system_instruction)
-        )
-        
-        raw_text = response.text
-        parts = raw_text.split("●")
+        parts = raw.split("●")
         st.session_state.event_title = parts[0].replace("【トラブル】", "").strip()
-        
         choices = []
-        for part in parts[1:]:
-            if "怒鳴る対応：" in part:
-                choices.append({"type": "BAD", "text": part.replace("怒鳴る対応：", "").strip()})
-            elif "過保護対応：" in part:
-                choices.append({"type": "OVER", "text": part.replace("過保護対応：", "").strip()})
-            elif "ペアトレ対応：" in part:
-                choices.append({"type": "GOOD", "text": part.replace("ペアトレ対応：", "").strip()})
+        for p in parts[1:]:
+            if "怒鳴る対応：" in p: choices.append({"type": "BAD", "text": p.replace("怒鳴る対応：", "").strip()})
+            elif "過保護対応：" in p: choices.append({"type": "OVER", "text": p.replace("過保護対応：", "").strip()})
+            elif "ペアトレ対応：" in p: choices.append({"type": "GOOD", "text": p.replace("ペアトレ対応：", "").strip()})
         
         random.shuffle(choices)
         st.session_state.shuffled_choices = choices
-        
         st.session_state.stage = "play"
         st.rerun()
 
-# --- 画面3: メインゲーム画面 ---
+# --- 画面3: ゲーム画面 ---
 elif st.session_state.stage == "play":
-    st.markdown(f"""
-    <div class='plant-box'>
-        <span style='font-size: 80px;'>{st.session_state.plant_emoji}</span>
-        <h3>{st.session_state.plant_name}</h3>
-        <p>状態: <b>{st.session_state.growth}</b></p>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    st.caption(f"水分・元気度: {st.session_state.health} / 100")
-    st.progress(st.session_state.health / 100)
-    st.write("---")
-    
-    st.markdown("### 🚨 日常のピンチ！")
     st.info(st.session_state.event_title)
-    st.write("---")
-    st.markdown("🗣️ **あなたならどう声をかける？**")
-    
-    for i, choice in enumerate(st.session_state.shuffled_choices):
-        if st.button(choice["text"], key=f"choice_{i}"):
-            st.session_state.selected_type = choice["type"]
-            st.session_state.selected_text = choice["text"]
-            
-            if choice["type"] == "GOOD":
-                st.session_state.health = min(100, st.session_state.health + 20)
-                if st.session_state.health >= 85:
-                    st.session_state.growth = "👑 大輪の花（見事な成長！）"
-                else:
-                    st.session_state.growth = "🌱 すくすく成長中"
-            elif choice["type"] == "BAD":
-                st.session_state.health = max(10, st.session_state.health - 20)
-                st.session_state.growth = "🌵 トゲトゲ・萎れ気味"
-            else: # OVER
-                st.session_state.health = max(10, st.session_state.health - 5)
-                st.session_state.growth = "🌾 ひょろひょろ（栄養過多）"
-                
+    for i, ch in enumerate(st.session_state.shuffled_choices):
+        if st.button(ch["text"], key=i):
+            st.session_state.selected = ch
             st.session_state.stage = "result"
             st.rerun()
 
-# --- 画面4: 結果・フィードバック ---
+# --- 画面4: 結果画面 ---
 elif st.session_state.stage == "result":
-    st.markdown(f"<div style='text-align:center; font-size:50px;'>{st.session_state.plant_emoji}</div>", unsafe_allow_html=True)
-    st.progress(st.session_state.health / 100)
+    st.write(f"あなたが選んだ対応: {st.session_state.selected['text']}")
     
-    if st.session_state.selected_type == "GOOD":
-        st.success("✨ 【ペアトレ流】見事な水やり！特性を捉えた最高の対応です。")
-    elif st.session_state.selected_type == "BAD":
-        st.error("💥 【しつけ・正論の罠】世間的には正論ですが、この子には届かなかったかも…？")
-    else:
-        st.warning("⚠️ 【良かれと思っての罠】優しい神対応に見えて、実は成長を停滞させる栄養過多かも？")
+    with st.spinner("コーチが解説中..."):
+        prompt = f"トラブル: {st.session_state.event_title}。選んだ対応: {st.session_state.selected['text']}"
+        advice = call_gemini(prompt, "なぜその対応がどうなったか、親に共感しつつ解説して")
+        st.info(advice)
         
-    st.markdown(f"**あなたが選んだ対応:**\n> {st.session_state.selected_text}")
-    st.write("---")
-    
-    with st.spinner("花木の様子を観察中..."):
-        system_instruction = (
-            "あなたは植物に例えたペアトレコーチです。プレイヤーが選んだ対応のタイプ（GOOD:ペアトレ流、BAD:お説教・正論、OVER:過保護・物のご褒美・過剰共感）"
-            "に応じて、植物（子ども）の特性ゆえにどう感じて、どう変化したかを優しく解説してください。\n\n"
-            "特にBADやOVERは『一見丁寧で理想的な対応に見えますよね。そうしたくなる気持ち、本当に痛いほど分かります！でも、実はこの特性の植物には……』"
-            "と、親御さんの愛情に深く共感した上で、なぜ裏目に出てしまうのかを納得感を持ってまとめて解説してください。"
-        )
-        
-        prompt = (
-            f"トラブル内容: {st.session_state.event_title}\n"
-            f"選んだ対応のタイプ: {st.session_state.selected_type}\n"
-            f"実際の対応文面: {st.session_state.selected_text}"
-        )
-        
-        # 🚨 こちらも 'models/gemini-1.5-flash' に統一
-        response = client.models.generate_content(
-            model='models/gemini-1.5-flash',
-            contents=prompt,
-            config=types.GenerateContentConfig(system_instruction=system_instruction)
-        )
-        st.markdown("### 🌼 コーチからの育成アドバイス")
-        st.info(response.text)
-    
-    st.write("---")
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("➡️ 同じ子で次のピンチへ挑む"):
-            st.session_state.stage = "generate_event"
-            st.rerun()
-    with col2:
-        if st.button("🔄 別の植物を新しく育てる"):
-            st.session_state.stage = "select_plant"
-            st.session_state.health = 50
-            st.session_state.growth = "タネ・苗木"
-            st.rerun()
+    if st.button("➡️ 次のピンチへ / 🔄 リセット"):
+        st.session_state.stage = "select_plant"
+        st.rerun()
