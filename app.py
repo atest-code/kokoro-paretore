@@ -12,9 +12,9 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Gemini APIの初期化（直接埋め込み形式）
-# 14行目を完全にこれに置き換えて保存
-client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
+# 🚨 StreamlitのSecretsから安全にAPIキーを読み込む（エラー対策版）
+api_key_val = st.secrets.get("GEMINI_API_KEY", "")
+client = genai.Client(api_key=api_key_val)
 
 # セッション状態の初期化
 if "stage" not in st.session_state:
@@ -106,13 +106,14 @@ elif st.session_state.stage == "generate_event":
             "上記のプロファイルに基づいた『その特性にベストな環境調整、ワンステップでの具体的・肯定的な指示、あえて静かに見守る対応』にしてください。\n\n"
             "フォーマットは必ず以下を厳守し、選択肢のテキスト自体にGOODやBADといった正解を匂わせる言葉は絶対に入れないでください：\n"
             "【トラブル】\n（具体的な状況説明）\n"
-            "●怒鳴る対応：\n（親のセリフや行動 of 記述）\n"
-            "●過保護対応：\n（親のセリフや行動 of 記述）\n"
-            "●ペアトレ対応：\n（親のセリフや行動 of 記述）"
+            "●怒鳴る対応：\n（親のセリフや行動の記述）\n"
+            "●過保護対応：\n（親のセリフや行動の記述）\n"
+            "●ペアトレ対応：\n（親のセリフや行動の記述）"
         )
         
+        # 🚨 最も動作が安定している gemini-1.5-flash を採用
         response = client.models.generate_content(
-            model='gemini-2.5-flash',
+            model='gemini-1.5-flash',
             contents=f"【{st.session_state.plant_name}】が【{chosen_situation}】で起こすリアルなトラブルと、罠を含んだ3つの対応方法を作ってください。",
             config=types.GenerateContentConfig(system_instruction=system_instruction)
         )
@@ -207,7 +208,7 @@ elif st.session_state.stage == "result":
         system_instruction = (
             "あなたは植物に例えたペアトレコーチです。プレイヤーが選んだ対応のタイプ（GOOD:ペアトレ流、BAD:お説教・正論、OVER:過保護・物のご褒美・過剰共感）"
             "に応じて、植物（子ども）の特性ゆえにどう感じて、どう変化したかを優しく解説してください。\n\n"
-            "今回は特に、BADやOVERが『育児書に書いてあったり、世間一般では素晴らしいとされる対応』である場合が多いため、"
+            "特にBADやOVERは『育児書に書いてあったり、世間一般では素晴らしいとされる対応』であるため、決してお説教をせず、"
             "『一見、ものすごく丁寧で理想的な対応に見えますよね。そうしたくなる気持ち、本当に痛いほど分かります！でも、実はこの特性の植物には……』"
             "と、親御さんの愛情に深く共感した上で、なぜ裏目に出てしまうのかをユーモラスかつ『目から鱗』の納得感で、スマホでスッと読める長さにまとめて解説してください。"
         )
@@ -218,8 +219,9 @@ elif st.session_state.stage == "result":
             f"実際の対応文面: {st.session_state.selected_text}"
         )
         
+        # 🚨 解説側も 1.5-flash に統一して安定化
         response = client.models.generate_content(
-            model='gemini-2.5-flash',
+            model='gemini-1.5-flash',
             contents=prompt,
             config=types.GenerateContentConfig(system_instruction=system_instruction)
         )
